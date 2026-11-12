@@ -496,6 +496,20 @@ python -c "from ultralytics import YOLO; YOLO('weights/best.pt').export(format='
 
 > 说明：测量时 CPU load ≈11（他人作业），绝对值不能和 8.457 / 0.966 ms 的静默基准直接比；同表内的 A/B 可比。复测脚本 `src/benchmark_e2e.py`。
 
+### 批量吞吐
+
+TensorRT engine 是 batch=1 导出的，所以批量吞吐用 PyTorch 模型测（64 张图、3 轮取中位数）：
+
+| batch | img/s | ms/img |
+|---:|---:|---:|
+| 1 | 30.6 | 32.7 |
+| **2** | **39.1** | **25.6** |
+| 4 | 38.6 | 25.9 |
+| 8 | 36.6 | 27.3 |
+| 16 | 29.8 | 33.5 |
+
+batch 2 略优，再往上反而下降——**GPU 不是瓶颈，CPU 侧的 letterbox / dataloader 才是**。这和"预解码后 e2e 降 3.4×"的结论完全一致：这台机器上抢 CPU 比抢 GPU 更容易吃掉吞吐。
+
 ### 打通 TensorRT 跟踪链路
 
 之前 TensorRT 只出现在单帧 benchmark 里，跟踪一直跑 PyTorch。`src/benchmark_tracking_backend.py` 把 engine 直接接进跟踪循环：

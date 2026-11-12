@@ -1,0 +1,31 @@
+{
+  "model": "best.pt",
+  "imgsz": 960,
+  "rows": [
+    {
+      "batch": 1,
+      "images_per_s": 30.6,
+      "ms_per_image": 32.7
+    },
+    {
+      "batch": 2,
+      "images_per_s": 39.1,
+      "ms_per_image": 25.59
+    },
+    {
+      "batch": 4,
+      "images_per_s": 38.6,
+      "ms_per_image": 25.89
+    },
+    {
+      "batch": 8,
+      "images_per_s": 36.6,
+      "ms_per_image": 27.32
+    },
+    {
+      "batch": 16,
+      "images_per_s": 29.8,
+      "ms_per_image": 33.54
+    }
+  ]
+}
