@@ -28,6 +28,12 @@ TRACKERS = {
         / "configs"
         / "botsort_visdrone_gmc.yaml"
     ),
+
+    "botsort_reid": str(
+        PROJECT_ROOT
+        / "configs"
+        / "botsort_visdrone_gmc_reid.yaml"
+    ),
 }
 
 VALID_CLASSES = tuple(
