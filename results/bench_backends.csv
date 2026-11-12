@@ -1,0 +1,4 @@
+backend,precision_type,mean_latency_ms,p50_ms,p95_ms,inference_fps,e2e_fps,speedup
+PyTorch,FP32,8.457,8.374,9.114,118.24,86.68,1.00
+ONNX Runtime CUDA,FP32,4.049,3.973,4.376,246.98,133.51,2.09
+TensorRT,FP16,0.966,0.966,0.982,1035.68,237.21,8.76

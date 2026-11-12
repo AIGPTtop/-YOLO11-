@@ -407,6 +407,13 @@ python src/benchmark_backends.py --pt weights/best.pt --onnx weights/best.onnx \
 
 ---
 
+## 📁 原始结果
+
+`results/` 目录保存了本文所有数字的原始 CSV：检测消融、逐序列 MOT 指标、三后端 benchmark、流水线计时。  
+不用重跑也能逐项核对，见 [`results/README.md`](results/README.md)。
+
+---
+
 ## 📌 复现说明
 
 - 检测消融统一从同一个 `yolo11n.pt` 出发，`epochs=100`、`seed=0`、`deterministic=True`；

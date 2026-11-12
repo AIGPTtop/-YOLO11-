@@ -1,0 +1,5 @@
+pipeline,mean_latency_ms,fps
+Detection only,38.92,25.69
+Detection + ByteTrack,49.17,20.34
+Detection + BoT-SORT,48.16,20.77
+Detection + BoT-SORT + GMC,90.50,11.05
