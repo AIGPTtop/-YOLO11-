@@ -34,8 +34,10 @@
 | 模块 | 基线 | 最终方案 | 结果 |
 |---|---|---|---|
 | 🎯 检测 | YOLO11n-640 | **YOLO11n-P2-960** | mAP50-95 **18.79% → 26.30%**（+7.51 pp）；Recall **34.34% → 42.86%** |
+| 🎯 小目标 | E0 | **E3** | AP_s **8.39 → 15.42**（相对 **+83.8%**）；AP_l 仅 +1.46 |
 | 🚁 跟踪 | ByteTrack | **BoT-SORT + sparseOptFlow GMC** | HOTA **39.32 → 45.50**；IDF1 **46.72 → 56.07** |
 | 🔗 身份保持 | BoT-SORT 无 GMC | **BoT-SORT + GMC** | IDSW **2202 → 1312（−40.42%）**；AssA **46.63 → 56.82** |
+| ⚖️ GMC 开销 | ds=2（38.2 ms） | **ds=4（22.1 ms）** | HOTA **45.50 → 45.16**，计算量 **−42%** |
 | ⚡ 部署 | PyTorch FP32 | **TensorRT FP16** | 平均推理延迟 **8.457 → 0.966 ms（−88.58%，8.76×）**；端到端 **86.68 → 237.21 FPS** |
 
 > 最终方案：**YOLO11n-P2-960 + BoT-SORT + sparseOptFlow GMC + TensorRT FP16**
@@ -106,8 +108,16 @@ YOLO11-VisDrone/
 │   ├── track_video_mot.py      # 单序列跟踪 + MOT txt
 │   ├── evaluate_mot.py         # 自研 HOTA / CLEAR / Identity
 │   ├── run_motval_all.py       # 7 序列全量评测
+│   ├── run_motval_gmc.py       # 可切换 GMC 降采样 / 方法的评测入口
+│   ├── export_trackeval.py     # 转成 TrackEval 格式做交叉验证
+│   ├── compare_trackeval.py    # 自研指标 vs TrackEval
+│   ├── eval_ap_by_size.py      # COCO 式 AP + 小/中/大目标分桶
+│   ├── make_failure_cases.py   # GT vs 预测的失败案例图
 │   ├── benchmark_backends.py   # PyTorch / ONNX / TensorRT
+│   ├── benchmark_e2e.py        # NMS 融合 / max_det / 预处理 的端到端对比
+│   ├── benchmark_gmc.py        # GMC 各方法 / 降采样的单帧开销
 │   ├── benchmark_pipeline.py   # detect / det+track 流水线开销
+│   ├── benchmark_tracking_backend.py  # TRT engine + tracker 的实时跟踪
 │   ├── export_onnx.py
 │   └── make_gifs.py
 ├── weights/                    # 不入库
@@ -223,6 +233,36 @@ P3 feature ───┘                              ├─► Detect (P3/8)
 也就是说：**多 1.4% 参数、多 71% 计算量，换 1.04 个 mAP 点**。  
 这也是后面必须做 TensorRT 的原因——结构上多花的算力，只能靠部署侧压回来。
 
+### 增益来自哪里：按目标尺寸拆开
+
+整体 mAP 说明不了"小目标变好了"。用 COCO 式 AP（101 点插值，`conf=0.001`、`max_det=1000`）按 GT 面积分桶：
+
+| Bucket | 面积 (px²) | E0 | E3 | Δ |
+|---|---|---:|---:|---:|
+| all | — | 17.63 | 25.09 | +7.46 |
+| **small** | < 32² | 8.39 | **15.42** | **+7.03（相对 +83.8%）** |
+| medium | 32² – 96² | 24.46 | 31.98 | +7.52 |
+| large | > 96² | 40.63 | 42.09 | **+1.46** |
+
+**大目标几乎没变（+1.46），小目标翻了近一倍（+83.8%）**——这正好是 P2/4 分支 + 960 输入应当产生的效果，也是"针对小目标做的优化"最直接的证据。
+
+类别级（AP50-95，同一套评估）：
+
+| 类别 | E0 | E3 | Δ |
+|---|---:|---:|---:|
+| pedestrian | 14.6 | 25.8 | **+11.2** |
+| people | 8.9 | 17.4 | +8.5 |
+| bicycle | 3.3 | 9.2 | +5.9 |
+| car | 50.0 | 58.8 | +8.8 |
+| van | 20.2 | 28.8 | +8.6 |
+| truck | 17.8 | 22.8 | +5.0 |
+| tricycle | 11.2 | 15.7 | +4.5 |
+| awning-tricycle | 5.1 | 7.2 | +2.1 |
+| bus | 30.1 | 40.2 | **+10.1** |
+| motor | 15.0 | 24.9 | +9.9 |
+
+10 个类别全部提升；增益最小的是样本最少的 `awning-tricycle`（+2.1），符合长尾类的预期。
+
 ---
 
 ## 🚁 多目标跟踪
@@ -272,6 +312,29 @@ python src/track_video.py \
 
 **代价也要写清楚**：GMC 用召回和身份保持换了一点精确率，碎片数也略有上升。
 
+### GMC 的开销与降采样
+
+GMC 是整条链路里最贵的一步。用 120 帧实测（CPU、单帧）：
+
+| method | downscale | ms/frame |
+|---|---:|---:|
+| sparseOptFlow | 2（默认） | 38.15 |
+| **sparseOptFlow** | **4** | **22.06** |
+| sparseOptFlow | 6 | 26.49 |
+| orb | 2 | 631.6 |
+| ecc | 2 | 225.2 |
+
+`orb` / `ecc` 在这个分辨率下比稠密光流更慢，直接排除。把 2 倍降采样改成 4 倍后跑全量 MOT-val：
+
+| 配置 | GMC 开销 | HOTA | IDSW |
+|---|---:|---:|---:|
+| 无 GMC（`method=none`） | 0 ms | 40.19 | 2202 |
+| ds=2（原配置） | 38.2 ms | 45.50 | 1312 |
+| **ds=4** | **22.1 ms** | **45.16** | **1311** |
+
+**用 42% 的 GMC 计算量，保留 99% 的精度增益。**  
+（`method=none` 精确复现了 BoT-SORT 无 GMC 的 40.19 / 2202，说明这个消融开关本身是干净的。）
+
 ### 逐序列结果（GMC 在 7/7 条序列上均为正）
 
 | Sequence | HOTA ByteTrack | HOTA BoT-SORT+GMC | Δ | IDSW 变化 |
@@ -298,6 +361,39 @@ python src/track_video.py \
 
 降低 conf 会让低分检测进入跟踪器：召回提升约 3 pp，但误检显著增加（Precision −5 pp、MOTA −7 pp），HOTA 只在 **−1.2 ~ +0.2** 之间波动。  
 **GMC 的增益从 +5.31 变为 +4.74，结论不受阈值选择影响**，所以主表保留 `conf=0.25`。
+
+---
+
+## 🔍 评估器可信度
+
+MOT 指标由 `src/evaluate_mot.py` 自研实现（HOTA / CLEAR / Identity）。为了避免"自己算自己的分"，把同一批预测转成 MOTChallenge 格式，用官方 **TrackEval** 重算了一遍：
+
+```bash
+python src/export_trackeval.py     # 生成 TrackEval 目录结构 + 自研指标
+python scripts/run_mot_challenge.py --BENCHMARK VisDrone ...   # TrackEval
+python src/compare_trackeval.py    # 逐序列对照
+```
+
+为了只比较“指标实现”，不掺入 GT 策略差异，两边使用完全相同的数据：10 类合并为 1 类、不使用 ignore region，7 序列 × 3 tracker 共 **21 组**逐序列对比：
+
+| 指标 | 平均绝对差 | 最大绝对差 |
+|---|---:|---:|
+| HOTA | 0.000 | **0.001** |
+| IDF1 | 0.000 | 0.000 |
+| MOTA | 0.000 | 0.000 |
+| IDSW | 完全一致 | — |
+
+结论：**自研评估器与 TrackEval 数值等价**，MOT 结果可以放心引用。原始对照见 `results/trackeval_alignment.csv`。
+
+---
+
+## 🚧 失败案例
+
+最难的序列 `uav0000268_05773_v`（978 帧、密集小目标）在全量 MOT-val 上召回只有 ~21%。下图是该序列上漏检最多的三帧，绿框为 GT、红框为预测：
+
+![failure](assets/failure_cases.jpg)
+
+失败模式很集中：**目标尺寸接近 10–20 px、相互遮挡、且集中在画面远端**时，检测器几乎全部漏掉；同一帧近处的车辆和巴士仍然稳定检出。这说明瓶颈仍是"极小目标的有效像素不足"，而不是跟踪环节——后续可以用切图推理（SAHI）或更高分辨率输入继续压。
 
 ---
 
@@ -361,6 +457,31 @@ python src/benchmark_backends.py \
 
 推理快了 8.76 倍，但端到端只快了 2.74 倍——因为 **TensorRT 下 68% 的时间已经不在推理上了**。  
 这条结论直接决定了下一步该优化哪儿。
+
+### 优化尝试：把 NMS 融进 engine
+
+用 `nms=True` 导出时，EfficientNMS 插件会被编进 engine，输出直接是 `(1, 300, 6)` 的最终检测框，Python 侧不再执行 torch NMS：
+
+```bash
+python -c "from ultralytics import YOLO; YOLO('weights/best.pt').export(format='engine', imgsz=960, half=True, nms=True, batch=1)"
+```
+
+按 `pre 1.876 / infer 0.966 / post 1.000` 的原分解，消掉 1.0 ms 的 Python NMS 后，端到端应落到 **~3.3 ms**。
+
+> ⚠️ **测量环境说明**：这台服务器是共享的，本轮测量时另一用户的作业占满 GPU1、CPU load ≈15，端到端 A/B 的绝对值会在 4–10 ms 之间漂移，因此这里只保留结构与分解，不给不可靠的"优化后 FPS"。复测脚本是 `src/benchmark_e2e.py`（自带 warmup + 交错 A/B + 取中位数），空闲窗口直接重跑即可。
+
+### 打通 TensorRT 跟踪链路
+
+之前 TensorRT 只出现在单帧 benchmark 里，跟踪一直跑 PyTorch。`src/benchmark_tracking_backend.py` 把 engine 直接接进跟踪循环：
+
+| backend | tracker | 平均延迟 | FPS |
+|---|---|---:|---:|
+| PyTorch | ByteTrack | 51.7 ms | 19.3 |
+| **TensorRT** | **ByteTrack** | **33.4 ms** | **29.9** |
+| PyTorch | BoT-SORT + GMC | 91.3 ms | 11.0 |
+| **TensorRT** | **BoT-SORT + GMC** | **80.4 ms** | **12.4** |
+
+同样受机器负载影响，看相对值：**检测换成 engine 后跟踪链路约 1.5× 提速**；但 GMC 仍占 38 ms，成了新瓶颈——这正是把 GMC 降到 ds=4（22 ms）的直接动机。
 
 ---
 
@@ -434,7 +555,10 @@ python src/benchmark_backends.py --pt weights/best.pt --onnx weights/best.onnx \
 - 表格中的检测指标来自对各自 `best.pt` 的**独立复验**，与训练日志末轮数值有 ±0.1~0.4 个点的差异（`max_det`、batch 不同所致）；
 - 跟踪对比固定检测器、`imgsz=960`、`conf=0.25`、`max_det=1000`，每条序列重新初始化 Tracker；另附 `conf=0.10` 的阈值敏感性实验（HOTA 变化 −1.2 ~ +0.2）；
 - 部署指标与训练指标分别记录，不交叉引用；
-- `Inference FPS` 只统计模型推理，`E2E FPS` 含前后处理与数据搬运。
+- `Inference FPS` 只统计模型推理，`E2E FPS` 含前后处理与数据搬运；
+- 本轮新增的 GMC / 跟踪后端 / 端到端 benchmark 是在共享服务器（另一用户占满 GPU1、CPU load ≈15）上测的，**只用于同机 A/B 的相对比较**，绝对值不与上文静默环境的结果混用；
+- TrackEval 对齐使用"10 类合并为 1 类 + 不使用 ignore region"的受控数据，目的是只比较指标实现；
+- AP 分桶使用 COCO 式 101 点插值（`conf=0.001`、`max_det=1000`），因此 `all` 数值与 Ultralytics 的 mAP 会有 ±0.1 的差异。
 
 ---
 
@@ -442,12 +566,11 @@ python src/benchmark_backends.py --pt weights/best.pt --onnx weights/best.onnx \
 
 | 局限 | 说明 | 计划 |
 |---|---|---|
-| **ReID 未启用** | BoT-SORT 的 `with_reid: false`，外观分支没有参与关联 | 打开 ReID 做一组消融 |
-| **GMC 开销** | GMC 独占约 42 ms，未做任何优化 | 半分辨率光流 / ORB / 隔帧估计，做 HOTA–延迟 Pareto |
-| **前后处理瓶颈** | TensorRT 下端到端仍有 68% 花在 Python 前后处理 | GPU 预处理 + 融合 NMS，目标 E2E < 2 ms |
-| **评估器未交叉验证** | `evaluate_mot.py` 为自研 HOTA / CLEAR / Identity 实现 | 与 TrackEval 对同一批 txt 结果做一致性校验 |
-| **未做量化与小目标分桶** | 只有 FP16；没有 AP_s / AP_m / AP_l | INT8 校准 + 按尺度统计 AP |
-| **跨后端跟踪未闭环** | TensorRT 只用于检测 benchmark，跟踪仍在 PyTorch 下测 | `YOLO("best.engine").track()` 打通实时跟踪链路 |
+| **共享 GPU 下的延迟数字** | 本轮新增 benchmark 测量时另一用户占满 GPU1、CPU load ≈15，绝对值不可与静默机器对比 | 用 `src/benchmark_e2e.py` 在空闲窗口重测 |
+| **预处理仍在 Python** | NMS 已融进 engine，但 letterbox / HWC→CHW 仍在 CPU，是剩余的主要开销 | GPU letterbox 或解码器直出 960×960 |
+| **batch 敏感性未补** | E0 用 `batch=16`、E1–E3 用 `batch=32`；100 epoch 重训在这台共享机上约需 4.5 h，本轮未跑完 | 专用窗口补 `batch=32 @ 640` |
+| **ReID 未启用** | BoT-SORT `with_reid: false`，外观分支没有参与关联 | 打开 ReID 做一组消融 |
+| **INT8 量化** | 已用 548 张校准图导出 INT8 engine，精度/延迟对比待引擎构建完成后补充 | 补 `val` + benchmark |
 
 ---
 

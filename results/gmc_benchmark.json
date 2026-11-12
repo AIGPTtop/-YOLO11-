@@ -1,0 +1,32 @@
+[
+  {
+    "method": "sparseOptFlow",
+    "downscale": 2,
+    "ms_per_frame": 38.147
+  },
+  {
+    "method": "sparseOptFlow",
+    "downscale": 4,
+    "ms_per_frame": 22.063
+  },
+  {
+    "method": "sparseOptFlow",
+    "downscale": 6,
+    "ms_per_frame": 26.494
+  },
+  {
+    "method": "orb",
+    "downscale": 2,
+    "ms_per_frame": 631.553
+  },
+  {
+    "method": "ecc",
+    "downscale": 2,
+    "ms_per_frame": 225.196
+  },
+  {
+    "method": "none",
+    "downscale": 2,
+    "ms_per_frame": 0.002
+  }
+]

@@ -28,3 +28,7 @@ venv/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# tensorrt calibration cache
+weights/*.cache
+*.cache

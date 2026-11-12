@@ -1,0 +1,44 @@
+[
+  {
+    "model": "pt",
+    "tracker": "bytetrack",
+    "mean_ms": 51.72,
+    "p95_ms": 85.9,
+    "fps": 19.3
+  },
+  {
+    "model": "pt",
+    "tracker": "botsort",
+    "mean_ms": 91.32,
+    "p95_ms": 142.55,
+    "fps": 11.0
+  },
+  {
+    "model": "engine",
+    "tracker": "bytetrack",
+    "mean_ms": 33.42,
+    "p95_ms": 58.06,
+    "fps": 29.9
+  },
+  {
+    "model": "engine",
+    "tracker": "botsort",
+    "mean_ms": 80.41,
+    "p95_ms": 125.7,
+    "fps": 12.4
+  },
+  {
+    "model": "engine_nms",
+    "tracker": "bytetrack",
+    "mean_ms": 58.51,
+    "p95_ms": 80.25,
+    "fps": 17.1
+  },
+  {
+    "model": "engine_nms",
+    "tracker": "botsort",
+    "mean_ms": 79.12,
+    "p95_ms": 112.05,
+    "fps": 12.6
+  }
+]

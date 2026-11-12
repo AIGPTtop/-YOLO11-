@@ -1,0 +1,46 @@
+{
+  "config": {
+    "images": 120,
+    "runs": 3,
+    "imgsz": 960,
+    "preresize": true,
+    "out": "/home/user11/public3/fwx/yolo11_project/results/benchmark_e2e.json"
+  },
+  "summary": {
+    "stock_trt": {
+      "preprocess_ms": 4.437318283857571,
+      "inference_ms": 4.021371902328813,
+      "postprocess_ms": 10.331504084428564,
+      "e2e_ms": 26.806141402468914,
+      "e2e_fps": 37.51963457250534
+    },
+    "nms_trt": {
+      "preprocess_ms": 4.788944110946937,
+      "inference_ms": 9.408608300145715,
+      "postprocess_ms": 4.324180096025683,
+      "e2e_ms": 26.422636673992706,
+      "e2e_fps": 45.1110657566309
+    },
+    "nms_trt_md300": {
+      "preprocess_ms": 3.962753966657652,
+      "inference_ms": 8.213878085371107,
+      "postprocess_ms": 3.686555573302839,
+      "e2e_ms": 23.402205955547593,
+      "e2e_fps": 45.837052944504414
+    },
+    "stock_trt_md300": {
+      "preprocess_ms": 3.4982732898141773,
+      "inference_ms": 2.862896713324719,
+      "postprocess_ms": 7.578703541205161,
+      "e2e_ms": 21.012987735836457,
+      "e2e_fps": 50.27950099125505
+    },
+    "nms_trt_preresized": {
+      "preprocess_ms": 4.901796592295998,
+      "inference_ms": 7.148547839218129,
+      "postprocess_ms": 2.9934877503870263,
+      "e2e_ms": 15.76683723833412,
+      "e2e_fps": 76.29312399846754
+    }
+  }
+}
