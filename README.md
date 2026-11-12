@@ -286,6 +286,19 @@ python src/track_video.py \
 
 收益集中在旋转幅度大的三条序列（0117 / 0137 / 0339），与 GMC 的设计动机一致；在几乎不旋转的 0268 上增益接近于 0——这正好说明增益来源是相机运动，而不是别的因素。
 
+### 跟踪阈值敏感性
+
+主表使用 `conf=0.25`。为了确认结论不依赖这个阈值，用 `conf=0.10` 把 7 条序列全部重跑了一遍：
+
+| Tracker | HOTA @0.25 | HOTA @0.10 | Δ HOTA | Recall | Precision | MOTA | IDSW |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ByteTrack | 39.32 | 39.53 | +0.20 | 58.42 → 61.36 | 66.89 → 62.01 | 27.51 → 21.88 | 2253 → 2142 |
+| BoT-SORT | 40.19 | 39.59 | −0.60 | 58.82 → 61.75 | 67.03 → 61.81 | 27.94 → 21.68 | 2202 → 2163 |
+| BoT-SORT + GMC | **45.50** | 44.33 | −1.17 | 63.17 → 66.94 | 65.11 → 59.47 | 28.16 → 20.24 | 1312 → 1208 |
+
+降低 conf 会让低分检测进入跟踪器：召回提升约 3 pp，但误检显著增加（Precision −5 pp、MOTA −7 pp），HOTA 只在 **−1.2 ~ +0.2** 之间波动。  
+**GMC 的增益从 +5.31 变为 +4.74，结论不受阈值选择影响**，所以主表保留 `conf=0.25`。
+
 ---
 
 ## ⏱️ 检测 / 跟踪流水线开销
@@ -419,7 +432,7 @@ python src/benchmark_backends.py --pt weights/best.pt --onnx weights/best.onnx \
 - 检测消融统一从同一个 `yolo11n.pt` 出发，`epochs=100`、`seed=0`、`deterministic=True`；
 - **E0 用 `batch=16`、E1–E3 用 `batch=32`**（640 与 960 的显存对齐），未单独做 batch 敏感性实验；
 - 表格中的检测指标来自对各自 `best.pt` 的**独立复验**，与训练日志末轮数值有 ±0.1~0.4 个点的差异（`max_det`、batch 不同所致）；
-- 跟踪对比固定检测器、`imgsz=960`、`conf=0.25`、`max_det=1000`，每条序列重新初始化 Tracker；
+- 跟踪对比固定检测器、`imgsz=960`、`conf=0.25`、`max_det=1000`，每条序列重新初始化 Tracker；另附 `conf=0.10` 的阈值敏感性实验（HOTA 变化 −1.2 ~ +0.2）；
 - 部署指标与训练指标分别记录，不交叉引用；
 - `Inference FPS` 只统计模型推理，`E2E FPS` 含前后处理与数据搬运。
 
@@ -429,7 +442,7 @@ python src/benchmark_backends.py --pt weights/best.pt --onnx weights/best.onnx \
 
 | 局限 | 说明 | 计划 |
 |---|---|---|
-| **跟踪阈值** | 评测用 `conf=0.25`，而 `track_low_thresh=0.10`，低分框在检测端就被滤掉，ByteTrack 的二次关联未被充分利用 | 补 `conf=0.10` 消融，修正跨算法对比 |
+| **ReID 未启用** | BoT-SORT 的 `with_reid: false`，外观分支没有参与关联 | 打开 ReID 做一组消融 |
 | **GMC 开销** | GMC 独占约 42 ms，未做任何优化 | 半分辨率光流 / ORB / 隔帧估计，做 HOTA–延迟 Pareto |
 | **前后处理瓶颈** | TensorRT 下端到端仍有 68% 花在 Python 前后处理 | GPU 预处理 + 融合 NMS，目标 E2E < 2 ms |
 | **评估器未交叉验证** | `evaluate_mot.py` 为自研 HOTA / CLEAR / Identity 实现 | 与 TrackEval 对同一批 txt 结果做一致性校验 |
