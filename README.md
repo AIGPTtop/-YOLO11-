@@ -472,7 +472,7 @@ python src/benchmark_backends.py \
 推理快了 8.76 倍，但端到端只快了 2.74 倍——因为 **TensorRT 下 68% 的时间已经不在推理上了**。  
 这条结论直接决定了下一步该优化哪儿。
 
-### 优化尝试：把 NMS 融进 engine
+### 优化尝试：把 NMS 融进 engine（结论：不划算）
 
 用 `nms=True` 导出时，EfficientNMS 插件会被编进 engine，输出直接是 `(1, 300, 6)` 的最终检测框，Python 侧不再执行 torch NMS：
 
@@ -480,9 +480,21 @@ python src/benchmark_backends.py \
 python -c "from ultralytics import YOLO; YOLO('weights/best.pt').export(format='engine', imgsz=960, half=True, nms=True, batch=1)"
 ```
 
-按 `pre 1.876 / infer 0.966 / post 1.000` 的原分解，消掉 1.0 ms 的 Python NMS 后，端到端应落到 **~3.3 ms**。
+把测量拆成「带路径（含 JPEG 解码）」和「预解码（输入已是 960×960）」两组，同机交错 A/B、各 3 轮取均值：
 
-> ⚠️ **测量环境说明**：这台服务器是共享的，本轮测量时另一用户的作业占满 GPU1、CPU load ≈15，端到端 A/B 的绝对值会在 4–10 ms 之间漂移，因此这里只保留结构与分解，不给不可靠的"优化后 FPS"。复测脚本是 `src/benchmark_e2e.py`（自带 warmup + 交错 A/B + 取中位数），空闲窗口直接重跑即可。
+| 变体 | pre | infer | post | e2e |
+|---|---:|---:|---:|---:|
+| stock engine（路径输入） | 3.90 | 1.80 | 2.21 | 16.38 ms |
+| NMS engine（路径输入） | 2.95 | 3.16 | 0.91 | 14.12 ms |
+| stock engine（预解码） | 1.99 | 1.21 | 1.18 | **4.76 ms** |
+| NMS engine（预解码） | 1.65 | 2.30 | 0.47 | 4.93 ms |
+
+两个结论都很反直觉，但都有用：
+
+1. **NMS 融合基本打平，甚至略亏**：后处理从 1.18 → 0.47 ms（−0.71），可 EfficientNMS 插件让推理从 1.21 → 2.30 ms（+1.09）。在 960 输入、300 框的规模下，CUDA 侧 NMS 并不比 torch NMS 便宜。**所以没有把它设为默认导出方式**。
+2. **端到端瓶颈是输入处理，不是 NMS**：同一个 engine，去掉 JPEG 解码与 letterbox 后 e2e 从 16.38 → 4.76 ms（3.4×）。真正该优化的是"解码 + 预处理"这条链路——这也和上面"TensorRT 下 68% 时间不在推理上"的分解互相印证。
+
+> 说明：测量时 CPU load ≈11（他人作业），绝对值不能和 8.457 / 0.966 ms 的静默基准直接比；同表内的 A/B 可比。复测脚本 `src/benchmark_e2e.py`。
 
 ### 打通 TensorRT 跟踪链路
 
