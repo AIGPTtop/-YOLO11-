@@ -1,0 +1,30 @@
+# datasets & weights (too large for git)
+datasets/
+weights/*.pt
+weights/*.onnx
+weights/*.engine
+
+# experiment outputs
+outputs/
+runs/
+trt_pkgs/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# media (only demo gifs under assets/ are tracked)
+*.avi
+*.mp4
+*.mov
+*.mkv
+!assets/*.gif
+
+# editors / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

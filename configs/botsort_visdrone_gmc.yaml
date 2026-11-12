@@ -1,0 +1,23 @@
+# BoT-SORT experiment for VisDrone
+# Keep shared tracking parameters unchanged from the default baseline.
+
+tracker_type: botsort
+
+track_high_thresh: 0.25
+track_low_thresh: 0.10
+new_track_thresh: 0.25
+
+track_buffer: 30
+match_thresh: 0.80
+fuse_score: true
+
+# Global Motion Compensation
+gmc_method: sparseOptFlow
+
+# ReID parameters
+proximity_thresh: 0.50
+appearance_thresh: 0.80
+
+# Disable ReID in the first experiment.
+with_reid: false
+model: auto
