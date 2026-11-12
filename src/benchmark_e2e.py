@@ -90,8 +90,10 @@ def main() -> None:
         print(f"pre-letterboxed {len(cached)} frames")
 
     jobs = [(name, models[name], engines[name][1], images) for name in models]
-    if cached is not None and "nms_trt" in models:
-        jobs.append(("nms_trt_preresized", models["nms_trt"], 1000, cached))
+    if cached is not None:
+        for nm in ("stock_trt", "nms_trt"):
+            if nm in models:
+                jobs.append((nm + "_preresized", models[nm], 1000, cached))
 
     acc = {name: [] for name, *_ in jobs}
     # warmup: first calls build CUDA contexts / TRT kernels and would otherwise
