@@ -1,0 +1,5 @@
+backend,precision,recall,map50,map50_95
+PyTorch FP32,0.544,0.428,0.444,0.263
+ONNX Runtime FP32,0.538,0.438,0.444,0.263
+TensorRT FP16,0.539,0.438,0.444,0.263
+TensorRT INT8,0.524,0.426,0.425,0.247

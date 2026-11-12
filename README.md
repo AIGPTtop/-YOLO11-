@@ -427,8 +427,11 @@ yolo export model=weights/best.onnx format=engine half=True imgsz=960 device=0
 | PyTorch FP32 | ≈0.544 | ≈0.428 | ≈0.444 | ≈0.263 |
 | ONNX Runtime FP32 | ≈0.538 | ≈0.438 | ≈0.444 | ≈0.263 |
 | TensorRT FP16 | ≈0.539 | ≈0.438 | ≈0.444 | ≈0.263 |
+| TensorRT INT8（548 张校准） | 0.524 | 0.426 | 0.425 | **0.247** |
 
 **FP16 没有带来可观精度损失**，这是能上线的关键前提。
+
+INT8 则不然：mAP50-95 从 0.263 掉到 **0.247（−1.65 pp，相对 −6.3%）**。航拍小目标本身只有几十个像素，量化误差对边界回归格外敏感——所以本项目**没有**把 INT8 作为默认后端，FP16 是当前的精度/速度平衡点。
 
 ### 三后端 Benchmark
 
@@ -570,7 +573,7 @@ python src/benchmark_backends.py --pt weights/best.pt --onnx weights/best.onnx \
 | **预处理仍在 Python** | NMS 已融进 engine，但 letterbox / HWC→CHW 仍在 CPU，是剩余的主要开销 | GPU letterbox 或解码器直出 960×960 |
 | **batch 敏感性未补** | E0 用 `batch=16`、E1–E3 用 `batch=32`；100 epoch 重训在这台共享机上约需 4.5 h，本轮未跑完 | 专用窗口补 `batch=32 @ 640` |
 | **ReID 未启用** | BoT-SORT `with_reid: false`，外观分支没有参与关联 | 打开 ReID 做一组消融 |
-| **INT8 量化** | 已用 548 张校准图导出 INT8 engine，精度/延迟对比待引擎构建完成后补充 | 补 `val` + benchmark |
+| **INT8 量化** | 已用 548 张图校准并评估：mAP50-95 **0.263 → 0.247（−6.3%）**，小目标对量化敏感，暂不作默认后端 | 试 per-channel / 混合精度 |
 
 ---
 
